@@ -1,0 +1,122 @@
+'use strict'
+
+const Hapi = require('hapi')
+const Inert = require('inert')
+const Request = require('request')
+
+
+const server = new Hapi.Server()
+server.connection({
+  port: 3000
+})
+
+// Register webpack HMR, fallback to development environment
+if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
+
+  const WebpackConfig = require('./config/webpack.config.js') // Webpack config
+  const HapiWebpackDevMiddleware = require('hapi-webpack-dev-middleware')
+  const HapiWebpackHotMiddleware = require('hapi-webpack-hot-middleware')
+
+  server.register([{
+    register: HapiWebpackDevMiddleware,
+    options: {
+      config: WebpackConfig,
+      options: {
+        noInfo: true,
+        publicPath: WebpackConfig.output.publicPath,
+        stats: {
+          colors: true
+        }
+      }
+    }
+  }, {
+    register: HapiWebpackHotMiddleware
+  }], function (err) {
+    if (err) {
+      throw err
+    }
+  })
+
+}
+
+server.register([Inert], function (err) {
+
+  if (err) {
+    throw err
+  }
+
+  server.route({
+    method: 'GET',
+    path: '/assets/{filepath*}',
+    config: {
+      auth: false,
+      cache: {
+        expiresIn: 24 * 60 * 60 * 1000,
+        privacy: 'public'
+      }
+    },
+    handler: {
+      directory: {
+        path: __dirname + '/public/assets/',
+        listing: false,
+        index: false
+      }
+    }
+  })
+
+  server.route({
+    method: 'GET',
+    path: '/build/{filepath*}',
+    config: {
+      auth: false,
+      cache: {
+        expiresIn: 24 * 60 * 60 * 1000,
+        privacy: 'public'
+      }
+    },
+    handler: {
+      directory: {
+        path: __dirname + '/public/build/',
+        listing: false,
+        index: false
+      }
+    }
+  })
+
+  // Example api call
+  server.route({
+    method: 'GET',
+    path: '/api/proxy',
+    handler: function (request, reply) {
+      let maximaUrl = 'https://beta.e-maxima.lv/nextgenapi/api/products/getproducts?listtype=0&catId=&take=&subCatId='
+      var options = {
+        url: maximaUrl,
+        headers: {
+          'Accept-Language': 'ru'
+        }
+      }
+
+      Request(options, (error, response, body) => {
+        reply(body)
+      })
+    }
+  })
+
+  server.route({
+    method: 'GET',
+    path: '/{path*}',
+    handler: function (request, reply) {
+      reply.file('./public/index.html')
+    }
+  })
+})
+
+server.start((err) => {
+
+  if (err) {
+    throw err
+  }
+  console.log('Server running at:', server.info.uri)
+})
+
+module.exports = server
